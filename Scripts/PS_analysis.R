@@ -759,7 +759,8 @@ corr_data <- correlationPlot(df_corr, c("Sex", "Age", "Barratt_Total", "MFQ_P_To
                                         "MFQ_SR_Total_AgeSex_Ctrl", "SCARED_P_Total_AgeSex_Ctrl", "SCARED_SR_Total_AgeSex_Ctrl", 
                                         "ARI_P_Total_Score_AgeSex_Ctrl", "ARI_S_Total_Score_AgeSex_Ctrl", "SWAN_IN_AgeSex_Ctrl", 
                                         "SWAN_HY_AgeSex_Ctrl", "ASSQ_Total", "SRS_Total", "SCQ_Total", "GP", 
-                                        "PC1", "PC2", "WISC_FSIQ"), 
+                                        "PC1", "PC2", "EEG_Standard", "NIH7_Pattern", 
+                                        "WISC_SS_Standard", "WISC_Coding_Standard", "WISC_FSIQ"), 
                              dir, "corr.png")
 names(df_corr)[which(names(df_corr) == "GP")] <- "peg_z_d"
 
@@ -774,14 +775,14 @@ PS_names <- c("EEG_Standard", "NIH7_Pattern", "WISC_Coding_Standard",
               "WISC_SS_Standard", "PC1", "PC2", "RC1", "RC2")
 icc_df <- matrix(data = NA, nrow = 8, ncol = 8)
 row.names(icc_df) <- PS_names -> colnames(icc_df)
-PSTasks_scaled <- PSTasks
-PSTasks_scaled[, -1] <- scale(PSTasks[, -1])
+PSTasks_Standard <- PSTasks
+PSTasks_Standard[, -1] <- scale(PSTasks[, -1])
 for (row in PS_names) {
   for (col in PS_names) {
     if (row == col) {
       next
     } else {
-      ICC_output <- ICC(PSTasks_scaled[, c(row, col)])
+      ICC_output <- ICC(PSTasks_Standard[, c(row, col)])
       icc_df[row, col] <- ICC_output$results["Single_fixed_raters", "ICC"]
     }
   }
@@ -890,48 +891,54 @@ Dx_Cat_Regression$Study_Site <- factor(Dx_Cat_Regression$Study_Site)
 
 diagnoses <- c("ADHD_I", "ADHD_C", "ASD", "Learning_Reading", "Learning_Math", "Anx_All", "Depression")
 
-coeffs_all <- data.frame(variable = character(), dx = character(),
-                         Estimate = numeric(),	
-                         Std_Error = numeric(),	t_value = numeric(),
-                         p_value = numeric(),	sig = numeric(), 
-                         stringsAsFactors = FALSE)
-stats_all <- data.frame(dx = character(),
-                        f_statistic = numeric(), df_reg = numeric(),
-                        df_error = numeric(), r_sq = numeric(),
-                        r_sq_adj = numeric(),
+for (ps_measure in ps_measures) {
+  coeffs_all <- data.frame(variable = character(), dx = character(),
+                           Estimate = numeric(),	
+                           Std_Error = numeric(),	t_value = numeric(),
+                           p_value = numeric(),	sig = numeric(), 
+                           stringsAsFactors = FALSE)
+  stats_all <- data.frame(dx = character(),
+                          f_statistic = numeric(), df_reg = numeric(),
+                          df_error = numeric(), r_sq = numeric(),
+                          r_sq_adj = numeric(),
+                          stringsAsFactors = FALSE)
+  for (dx in diagnoses) {
+    
+    pct_dx <- sum(Dx_Cat_Regression[, dx])/nrow(PSTasks_demos)
+    pct_wo_dx <- 1 - pct_dx
+    model_eq <- paste0("lm(PC1 ~ ", dx, " + Sex + Age + Study_Site + Barratt_Total + peg_z_d, data = Dx_Cat_Regression)")
+  
+    model <- eval(parse(text = model_eq))
+    coeffs <- data.frame(signif(summary(model)$coefficients, 4))
+    names(coeffs) <- c("Estimate", "Std_Error", "t_value", "p_value")
+    coeffs$sig <- sig_code_v(coeffs$p_value)
+    coeffs$variable <- row.names(coeffs)
+    row.names(coeffs) <- NULL
+    coeffs$dx <- dx
+    coeffs$variable[coeffs$variable == dx] <- "dx"
+    coeffs <- coeffs[, names(coeffs_all)]
+    coeffs_all <- rbind(coeffs_all, coeffs)
+    
+    stats <- data.frame(dx = dx,
+                        f_statistic = summary(model)$fstatistic['value'], 
+                        df_obs = summary(model)$df[2],
+                        df_pred = summary(model)$df[1] - 1, r_sq = summary(model)$r.squared,
+                        r_sq_adj = summary(model)$adj.r.squared,
                         stringsAsFactors = FALSE)
-for (dx in diagnoses) {
+    stats_all <- rbind(stats_all, stats)
+  }
+  coeffs_all <- reshape(coeffs_all, idvar = "variable", timevar = "dx",
+                        direction = "wide")
   
-  pct_dx <- sum(Dx_Cat_Regression[, dx])/nrow(PSTasks_demos)
-  pct_wo_dx <- 1 - pct_dx
-  model_eq <- paste0("lm(PC1 ~ ", dx, " + Sex + Age + Study_Site + Barratt_Total + peg_z_d, data = Dx_Cat_Regression)")
-
-  model <- eval(parse(text = model_eq))
-  coeffs <- data.frame(signif(summary(model)$coefficients, 4))
-  names(coeffs) <- c("Estimate", "Std_Error", "t_value", "p_value")
-  coeffs$sig <- sig_code_v(coeffs$p_value)
-  coeffs$variable <- row.names(coeffs)
-  row.names(coeffs) <- NULL
-  coeffs$dx <- dx
-  coeffs <- coeffs[, names(coeffs_all)]
-  coeffs_all <- rbind(coeffs_all, coeffs)
+  dir.create(paste0("Results/Regression/Categorical_Single_Dx/", ps_measure), showWarnings = FALSE)
   
-  stats <- data.frame(dx = dx,
-                      f_statistic = summary(model)$fstatistic['value'], 
-                      df_obs = summary(model)$df[2],
-                      df_pred = summary(model)$df[1] - 1, r_sq = summary(model)$r.squared,
-                      r_sq_adj = summary(model)$adj.r.squared,
-                      stringsAsFactors = FALSE)
-  stats_all <- rbind(stats_all, stats)
+  write.csv(coeffs_all, 
+            file.path("Results/Regression/Categorical_Single_Dx/", ps_measure, "coeffs.csv"), 
+            row.names = FALSE)
+  write.csv(stats_all, 
+            file.path("Results/Regression/Categorical_Single_Dx/", ps_measure, "stats.csv"), 
+            row.names = FALSE)
 }
-coeffs_all <- reshape(coeffs_all, idvar = "variable", timevar = "dx",
-                      direction = "wide")
-write.csv(coeffs_all, 
-          "Results/Regression/Categorical_Single_Dx/coeffs.csv", 
-          row.names = FALSE)
-write.csv(stats_all, 
-          "Results/Regression/Categorical_Single_Dx/stats.csv", 
-          row.names = FALSE)
 
 ### Categorical Regression with WIAT-Num ops
 Dx_Cat_Regression <- Consensus_Dx[, c("EID", "ADHD_I", "ADHD_C", "ASD", "GAD", "Learning", "Anx_Soc", "Anx_All", 
@@ -1049,194 +1056,6 @@ for (iq_measure in iq_measures) {
             row.names = FALSE)
 }
 
-### Categorical Regression with SWAN-IN
-Dx_Cat_Regression <- Consensus_Dx[, c("EID", "ADHD_I", "ADHD_C", "ASD", "GAD", "Learning", "Anx_Soc", "Anx_All", 
-                                      "Depression", "ASD_ADHD_I", "ASD_ADHD_C", "ASD_ADHD_All", "ASD_noADHD")]
-Dx_Cat_Regression <- Reduce(Merge, list(Dx_Cat_Regression, PSTasks, Basic_Demos, 
-                                        Barratt[, c("EID", "Barratt_Total")], 
-                                        WISC[, c("EID", "WISC_GAI", "WISC_FSIQ")], 
-                                        Pegboard, SWAN[, c("EID", "SWAN_IN_AgeSex_Ctrl")]))
-Dx_Cat_Regression <- na.omit(Dx_Cat_Regression)
-Dx_Cat_Regression$Study_Site <- factor(Dx_Cat_Regression$Study_Site)
-
-for (iq_measure in iq_measures) {
-  coeffs_all <- data.frame(variable = character(),	ps_measure = character(),
-                           iq_measure = character(),	Estimate = numeric(),	
-                           Std_Error = numeric(),	t_value = numeric(),
-                           p_value = numeric(),	sig = numeric(), 
-                           stringsAsFactors = FALSE)
-  stats_all <- data.frame(ps_measure = character(), iq_measure = character(),
-                          f_statistic = numeric(), df_reg = numeric(),
-                          df_error = numeric(), r_sq = numeric(),
-                          r_sq_adj = numeric(),
-                          stringsAsFactors = FALSE)
-  for (ps_measure in ps_measures) {
-    model_eq <- ""
-    if (iq_measure == "") {
-      model_eq <- paste0("lm(", ps_measure, " ~ ADHD_I + ADHD_C + ASD + Learning + Anx_All + Depression + Sex + Age + Study_Site + Barratt_Total + peg_z_d + SWAN_IN_AgeSex_Ctrl, data = Dx_Cat_Regression)")
-    } else {
-      model_eq <- paste0("lm(", ps_measure, " ~ ADHD_I + ADHD_C + ASD + Learning + Anx_All + Depression + Sex + Age + Study_Site + Barratt_Total + peg_z_d + SWAN_IN_AgeSex_Ctrl + ", iq_measure, ", data = Dx_Cat_Regression)") 
-    }
-    model <- eval(parse(text = model_eq))
-    coeffs <- data.frame(signif(summary(model)$coefficients, 4))
-    names(coeffs) <- c("Estimate", "Std_Error", "t_value", "p_value")
-    coeffs$sig <- sig_code_v(coeffs$p_value)
-    coeffs$variable <- row.names(coeffs)
-    row.names(coeffs) <- NULL
-    coeffs$ps_measure <- ps_measure
-    coeffs$iq_measure <- iq_measure
-    coeffs <- coeffs[, names(coeffs_all)]
-    coeffs_all <- rbind(coeffs_all, coeffs)
-    
-    stats <- data.frame(ps_measure = ps_measure, iq_measure = iq_measure,
-                        f_statistic = summary(model)$fstatistic['value'], 
-                        df_obs = summary(model)$df[2],
-                        df_pred = summary(model)$df[1] - 1, r_sq = summary(model)$r.squared,
-                        r_sq_adj = summary(model)$adj.r.squared,
-                        stringsAsFactors = FALSE)
-    stats_all <- rbind(stats_all, stats)
-  }
-  coeffs_all$iq_measure <- NULL
-  stats_all$iq_measure <- NULL
-  coeffs_all <- reshape(coeffs_all, idvar = "variable", timevar = "ps_measure",
-                        direction = "wide")
-  write.csv(coeffs_all, 
-            paste0("Results/Regression/Categorical_SWANIN/", iq_measure, 
-                   ifelse(iq_measure == "", "", "_"), "coeffs.csv"), 
-            row.names = FALSE)
-  write.csv(stats_all, 
-            paste0("Results/Regression/Categorical_SWANIN/", iq_measure, 
-                   ifelse(iq_measure == "", "", "_"), "stats.csv"), 
-            row.names = FALSE)
-}
-
-# Categorical + WIAT SLD Categories
-Dx_Cat_Regression <- Consensus_Dx[, c("EID", "ADHD_I", "ADHD_C", "ASD", "GAD", "Learning", "Anx_Soc", "Anx_All", 
-                                      "Depression", "ASD_ADHD_I", "ASD_ADHD_C", "ASD_ADHD_All", "ASD_noADHD")]
-Dx_Cat_Regression <- Reduce(Merge, list(Dx_Cat_Regression, PSTasks, Basic_Demos, 
-                                        Barratt[, c("EID", "Barratt_Total")], 
-                                        WISC[, c("EID", "WISC_GAI", "WISC_FSIQ")], 
-                                        Pegboard, WIAT[, c("EID", "WIAT_Num_Stnd", "WIAT_Word_Stnd")]))
-Dx_Cat_Regression <- na.omit(Dx_Cat_Regression)
-Dx_Cat_Regression$Study_Site <- factor(Dx_Cat_Regression$Study_Site)
-Dx_Cat_Regression$Learning_Math <- as.numeric(Dx_Cat_Regression$Learning == 1 & 
-                                      (Dx_Cat_Regression$WIAT_Num_Stnd < 85 & 
-                                      Dx_Cat_Regression$WIAT_Word_Stnd >= 85))
-Dx_Cat_Regression$Learning_Reading <- as.numeric(Dx_Cat_Regression$Learning == 1 & 
-                                         (Dx_Cat_Regression$WIAT_Num_Stnd >= 85 & 
-                                         Dx_Cat_Regression$WIAT_Word_Stnd < 85))
-Dx_Cat_Regression$Learning_MathReading <- as.numeric(Dx_Cat_Regression$Learning == 1 & 
-                                             (Dx_Cat_Regression$WIAT_Num_Stnd < 85 & 
-                                             Dx_Cat_Regression$WIAT_Word_Stnd < 85))
-Dx_Cat_Regression$Learning_NoMathReading <- as.numeric(Dx_Cat_Regression$Learning == 1 & 
-                                             (Dx_Cat_Regression$WIAT_Num_Stnd >= 85 & 
-                                                Dx_Cat_Regression$WIAT_Word_Stnd >= 85))
-
-for (iq_measure in iq_measures) {
-  coeffs_all <- data.frame(variable = character(),	ps_measure = character(),
-                           iq_measure = character(),	Estimate = numeric(),	
-                           Std_Error = numeric(),	t_value = numeric(),
-                           p_value = numeric(),	sig = numeric(), 
-                           stringsAsFactors = FALSE)
-  stats_all <- data.frame(ps_measure = character(), iq_measure = character(),
-                          f_statistic = numeric(), df_reg = numeric(),
-                          df_error = numeric(), r_sq = numeric(),
-                          r_sq_adj = numeric(),
-                          stringsAsFactors = FALSE)
-  for (ps_measure in ps_measures) {
-    model_eq <- ""
-    if (iq_measure == "") {
-      model_eq <- paste0("lm(", ps_measure, " ~ ADHD_I + ADHD_C + ASD + Learning_Math + Learning_Reading + Learning_MathReading + Learning_NoMathReading + Anx_All + Depression + Sex + Age + Barratt_Total + Study_Site + peg_z_d, data = Dx_Cat_Regression)")
-    } else {
-      model_eq <- paste0("lm(", ps_measure, " ~ ADHD_I + ADHD_C + ASD + Learning_Math + Learning_Reading + Learning_MathReading + Learning_NoMathReading + Anx_All + Depression + Sex + Age + Barratt_Total + Study_Site + peg_z_d + ", iq_measure, ", data = Dx_Cat_Regression)") 
-    }
-    model <- eval(parse(text = model_eq))
-    coeffs <- data.frame(signif(summary(model)$coefficients, 4))
-    names(coeffs) <- c("Estimate", "Std_Error", "t_value", "p_value")
-    coeffs$sig <- sig_code_v(coeffs$p_value)
-    coeffs$variable <- row.names(coeffs)
-    row.names(coeffs) <- NULL
-    coeffs$ps_measure <- ps_measure
-    coeffs$iq_measure <- iq_measure
-    coeffs <- coeffs[, names(coeffs_all)]
-    coeffs_all <- rbind(coeffs_all, coeffs)
-    
-    stats <- data.frame(ps_measure = ps_measure, iq_measure = iq_measure,
-                        f_statistic = summary(model)$fstatistic['value'], 
-                        df_obs = summary(model)$df[2],
-                        df_pred = summary(model)$df[1] - 1, r_sq = summary(model)$r.squared,
-                        r_sq_adj = summary(model)$adj.r.squared,
-                        stringsAsFactors = FALSE)
-    stats_all <- rbind(stats_all, stats)
-    
-  }
-  coeffs_all$iq_measure <- NULL
-  stats_all$iq_measure <- NULL
-  coeffs_all <- reshape(coeffs_all, idvar = "variable", timevar = "ps_measure",
-                        direction = "wide")
-  write.csv(coeffs_all, 
-            paste0("Results/Regression/Categorical_SLD/", iq_measure, 
-                   ifelse(iq_measure == "", "", "_"), "coeffs.csv"), 
-            row.names = FALSE)
-  write.csv(stats_all, 
-            paste0("Results/Regression/Categorical_SLD/", iq_measure, 
-                   ifelse(iq_measure == "", "", "_"), "stats.csv"), 
-            row.names = FALSE)
-}
-
-### Item-Level Categorical Regression with SWAN-IN
-Dx_Cat_Regression <- Reduce(Merge, list(PSTasks, Basic_Demos, Barratt[, c("EID", "Barratt_Total")],
-                                        WISC[, c("EID", "WISC_GAI", "WISC_FSIQ")], 
-                                        SWAN[, c("EID", "SWAN_01", "SWAN_02", "SWAN_03", "SWAN_04", "SWAN_05",
-                                                 "SWAN_06", "SWAN_07", "SWAN_08", "SWAN_09", "SWAN_IN")]))
-Dx_Cat_Regression <- na.omit(Dx_Cat_Regression)
-Dx_Cat_Regression$Study_Site <- factor(Dx_Cat_Regression$Study_Site)
-
-
-for (iq_measure in iq_measures) {
-  coeffs_all <- data.frame(variable = character(),	ps_measure = character(),
-                           Estimate = numeric(), Std_Error = numeric(),	
-                           t_value = numeric(), p_value = numeric(),	
-                           sig = numeric(), stringsAsFactors = FALSE)
-  stats_all <- data.frame(ps_measure = character(), iq_measure = character(),
-                          f_statistic = numeric(), df_reg = numeric(),
-                          df_error = numeric(), r_sq = numeric(),
-                          r_sq_adj = numeric(),
-                          stringsAsFactors = FALSE)
-
-  for (ps_measure in ps_measures) {
-    model_eq <- paste0("lm(", ps_measure, " ~ Sex + Age + Barratt_Total + Study_Site + SWAN_01 + SWAN_02 + SWAN_03 + SWAN_04 + SWAN_05 + SWAN_06 + SWAN_07 + SWAN_08 + SWAN_09, data = Dx_Cat_Regression)")
-    model <- eval(parse(text = model_eq))
-    coeffs <- data.frame(signif(summary(model)$coefficients, 4))
-    names(coeffs) <- c("Estimate", "Std_Error", "t_value", "p_value")
-    coeffs$sig <- sig_code_v(coeffs$p_value)
-    coeffs$variable <- row.names(coeffs)
-    row.names(coeffs) <- NULL
-    coeffs$ps_measure <- ps_measure
-    coeffs <- coeffs[, names(coeffs_all)]
-    coeffs_all <- rbind(coeffs_all, coeffs)
-    
-    stats <- data.frame(ps_measure = ps_measure, iq_measure = iq_measure,
-                        f_statistic = summary(model)$fstatistic['value'], 
-                        df_obs = summary(model)$df[2],
-                        df_pred = summary(model)$df[1] - 1, r_sq = summary(model)$r.squared,
-                        r_sq_adj = summary(model)$adj.r.squared,
-                        stringsAsFactors = FALSE)
-    stats_all <- rbind(stats_all, stats)
-  }
-  coeffs_all$iq_measure <- NULL
-  stats_all$iq_measure <- NULL
-  coeffs_all <- reshape(coeffs_all, idvar = "variable", timevar = "ps_measure",
-                        direction = "wide")
-  write.csv(coeffs_all, 
-            paste0("Results/Regression/Categorical_SWANIN_item/", iq_measure, 
-                   ifelse(iq_measure == "", "", "_"), "coeffs.csv"), 
-            row.names = FALSE)
-  write.csv(stats_all, 
-            paste0("Results/Regression/Categorical_SWANIN_item/", iq_measure, 
-                   ifelse(iq_measure == "", "", "_"), "stats.csv"), 
-            row.names = FALSE)
-}
 
 ### Forward Regression
 forward_reg <- df_corr[, c("Sex", "Age", "Barratt_Total", "Study_Site", "SWAN_IN_AgeSex_Ctrl", 
@@ -1319,7 +1138,7 @@ for (iq_measure in iq_measures) {
 }
 write.csv(fswr_calls, "Results/Regression/FSWR/fswr_calls.csv", row.names = FALSE)
 
-### Run regression with signficant FSWR items
+### Run regression with signficant FSWR items (single item)
 Dx_Cat_Regression <- df_corr[, c("Sex", "Age", "Barratt_Total", "Study_Site", "SWAN_IN_AgeSex_Ctrl", 
                                  "SWAN_HY_AgeSex_Ctrl", "ASSQ_Total", "SRS_Total", "SCQ_Total", 
                                  "peg_z_d", "WISC_GAI", "WISC_FSIQ", "PC1")]
@@ -1364,82 +1183,13 @@ coeffs_all <- reshape(coeffs_all, idvar = "variable", timevar = "FSWR_item",
                       direction = "wide")
 row.names(stats_all) <- NULL
 write.csv(coeffs_all, 
-          paste0("Results/Regression/Categorical_FSWR_item/", iq_measure, 
+          paste0("Results/Regression/Dimensional_Single_Item/", iq_measure, 
                  ifelse(iq_measure == "", "", "_"), "coeffs_single_item.csv"), 
           row.names = FALSE)
 write.csv(stats_all, 
-          paste0("Results/Regression/Categorical_FSWR_item/", iq_measure, 
+          paste0("Results/Regression/Dimensional_Single_Item/", iq_measure, 
                  ifelse(iq_measure == "", "", "_"), "stats_single_item.csv"), 
           row.names = FALSE)
-
-# Run forward step-wise regression with SWAN items
-fswr_calls <- data.frame(ps_measure = character(), iq_measure = character(),
-                         call = character(), stringsAsFactors = FALSE)
-
-for (iq_measure in iq_measures) {
-  fswr_coeffs_all <- data.frame(variable = character(),	ps_measure = character(),
-                                Estimate = numeric(),	
-                                Std_Error = numeric(),	t_value = numeric(),
-                                p_value = numeric(),	sig = numeric(), 
-                                stringsAsFactors = FALSE)
-  fswr_stats_all <- data.frame(ps_measure = character(), iq_measure = character(),
-                               f_statistic = numeric(), df_reg = numeric(),
-                               df_error = numeric(), r_sq = numeric(),
-                               r_sq_adj = numeric(),
-                               stringsAsFactors = FALSE)
-  for (ps_measure in ps_measures) {
-    forward_reg <- df_corr[, c("SWAN_01", "SWAN_02", "SWAN_03", "SWAN_04",
-                               "SWAN_05", "SWAN_06", "SWAN_07", "SWAN_08",
-                               "SWAN_09", "SWAN_10", "SWAN_11", "SWAN_12",
-                               "SWAN_13", "SWAN_14", "SWAN_15", "SWAN_16",
-                               "SWAN_17", "SWAN_18",
-                               "Sex", "Age", "Barratt_Total", "Study_Site",
-                               ps_measure)]
-    forward_reg <- na.omit(forward_reg)
-    forward_reg$Study_Site <- as.factor(forward_reg$Study_Site)
-    
-    null_model <- lm(paste0(ps_measure, " ~ 1"), data=forward_reg)
-    full_model <- lm(paste0(ps_measure, " ~ ."), data=forward_reg)
-    fswr <- step(null_model, scope=list(lower=null_model, upper=full_model), direction="forward")
-    call <- as.character(fswr$call)
-    fswr_calls <- rbind(fswr_calls, data.frame(ps_measure = ps_measure,
-                                               iq_measure = iq_measure,
-                                               call = call[2], 
-                                               stringsAsFactors = FALSE))
-    model <- lm(call[2], data = forward_reg)
-    
-    coeffs <- data.frame(signif(summary(model)$coefficients, 4))
-    names(coeffs) <- c("Estimate", "Std_Error", "t_value", "p_value")
-    coeffs$sig <- sig_code_v(coeffs$p_value)
-    coeffs$variable <- row.names(coeffs)
-    row.names(coeffs) <- NULL
-    coeffs$ps_measure <- ps_measure
-    coeffs$iq_measure <- iq_measure
-    coeffs <- coeffs[, names(fswr_coeffs_all)]
-    fswr_coeffs_all <- rbind(fswr_coeffs_all, coeffs)
-    
-    stats <- data.frame(ps_measure = ps_measure, iq_measure = iq_measure,
-                        f_statistic = summary(model)$fstatistic['value'], 
-                        df_obs = summary(model)$df[2],
-                        df_pred = summary(model)$df[1] - 1, r_sq = summary(model)$r.squared,
-                        r_sq_adj = summary(model)$adj.r.squared,
-                        stringsAsFactors = FALSE)
-    fswr_stats_all <- rbind(fswr_stats_all, stats)
-  }
-  fswr_coeffs_all$iq_measure <- NULL
-  fswr_stats_all$iq_measure <- NULL
-  fswr_coeffs_all <- reshape(fswr_coeffs_all, idvar = "variable", timevar = "ps_measure",
-                             direction = "wide")
-  write.csv(fswr_coeffs_all, 
-            paste0("Results/Regression/FSWR_SWANIN_item/", iq_measure, 
-                   ifelse(iq_measure == "", "", "_"), "coeffs.csv"), 
-            row.names = FALSE)
-  write.csv(fswr_stats_all, 
-            paste0("Results/Regression/FSWR_SWANIN_item/", iq_measure, 
-                   ifelse(iq_measure == "", "", "_"), "stats.csv"), 
-            row.names = FALSE)
-}
-write.csv(fswr_calls, "Results/Regression/FSWR_SWANIN_item/fswr_calls.csv", row.names = FALSE)
 
 ### New regression: PC1 <- WIAT Numerical Ops + WIAT Word Reading + SWAN IN +
 ###                 Age + Sex + Site + Barratt + GP
@@ -1451,50 +1201,62 @@ WIAT_Regression <- Reduce(Merge, list(PSTasks, Basic_Demos, Dx_Cat,
 WIAT_Regression <- na.omit(WIAT_Regression)
 WIAT_Regression <- WIAT_Regression[WIAT_Regression$Learning == 1, ]
 
-
-model <- lm(PC1 ~ WIAT_Num_Stnd + WIAT_Word_Stnd + SWAN_IN + Age + 
-              Sex + Study_Site + Barratt_Total + peg_z_nd, data = WIAT_Regression)
-coeffs <- data.frame(signif(summary(model)$coefficients, 4))
-names(coeffs) <- c("Estimate", "Std_Error", "t_value", "p_value")
-coeffs$sig <- sig_code_v(coeffs$p_value)
-coeffs$variable <- row.names(coeffs)
-row.names(coeffs) <- NULL
-coeffs <- coeffs[,c("variable", "Estimate", "Std_Error", "t_value", "p_value", "sig")]
-
-stats <- data.frame(ps_measure = ps_measure, iq_measure = iq_measure,
-                    f_statistic = summary(model)$fstatistic['value'], 
-                    df_obs = summary(model)$df[2],
-                    df_pred = summary(model)$df[1] - 1, r_sq = summary(model)$r.squared,
-                    r_sq_adj = summary(model)$adj.r.squared,
-                    stringsAsFactors = FALSE)
-
-write.csv(coeffs, 
-          paste0("Results/Regression/WIAT/", iq_measure, 
-                 ifelse(iq_measure == "", "", "_"), "coeffs.csv"), 
-          row.names = FALSE)
-write.csv(stats, 
-          paste0("Results/Regression/WIAT/stats.csv"), 
-          row.names = FALSE)
+for (ps_measure in ps_measures) {
+  for (iq_measure in iq_measures) {
+    model_eq <- ""
+    if (iq_measure == "") {
+      model_eq <- paste0("lm(", ps_measure, " ~ WIAT_Num_Stnd + WIAT_Word_Stnd + SWAN_IN + Age + 
+                  Sex + Study_Site + Barratt_Total + peg_z_nd, data = WIAT_Regression)")
+    } else {
+      model_eq <- paste0("lm(", ps_measure, " ~ WIAT_Num_Stnd + WIAT_Word_Stnd + SWAN_IN + Age + 
+                  Sex + Study_Site + Barratt_Total + peg_z_nd, data = WIAT_Regression)") 
+    }
+    model <- eval(parse(text = model_eq))
+    coeffs <- data.frame(signif(summary(model)$coefficients, 4))
+    names(coeffs) <- c("Estimate", "Std_Error", "t_value", "p_value")
+    coeffs$sig <- sig_code_v(coeffs$p_value)
+    coeffs$variable <- row.names(coeffs)
+    row.names(coeffs) <- NULL
+    coeffs <- coeffs[,c("variable", "Estimate", "Std_Error", "t_value", "p_value", "sig")]
+    
+    stats <- data.frame(ps_measure = ps_measure, iq_measure = iq_measure,
+                        f_statistic = summary(model)$fstatistic['value'], 
+                        df_obs = summary(model)$df[2],
+                        df_pred = summary(model)$df[1] - 1, r_sq = summary(model)$r.squared,
+                        r_sq_adj = summary(model)$adj.r.squared,
+                        stringsAsFactors = FALSE)
+    
+    dir.create(file.path("Results/Regression/SLD_Kids", ps_measure), showWarnings = FALSE)
+    write.csv(coeffs, 
+              file.path("Results/Regression/SLD_Kids", ps_measure, paste0(iq_measure, 
+                     ifelse(iq_measure == "", "", "_"), "coeffs.csv")), 
+              row.names = FALSE)
+    write.csv(stats, 
+              file.path("Results/Regression/SLD_Kids", ps_measure, paste0(iq_measure, 
+                     ifelse(iq_measure == "", "", "_"), "stats.csv")), 
+              row.names = FALSE)
+  }
+}
 
 # Run PCA on WISC subscales to generate "g"
-WISC_subscales <- WISC_PCA[, c("EID", "WISC_BD_Scaled", "WISC_Similarities_Scaled",
-             "WISC_MR_Scaled", "WISC_DS_Scaled", "WISC_Coding_Scaled",
-             "WISC_Vocab_Scaled", "WISC_FW_Scaled", "WISC_VP_Scaled",
-             "WISC_PS_Scaled", "WISC_SS_Scaled", "WISC_FSIQ", "WISC_GAI")]
+WISC_subscales <- WISC_PCA[, c("EID", "WISC_BD_Standard", "WISC_Similarities_Standard",
+             "WISC_MR_Standard", "WISC_DS_Standard", "WISC_Coding_Standard",
+             "WISC_Vocab_Standard", "WISC_FW_Standard", "WISC_VP_Standard",
+             "WISC_PS_Standard", "WISC_SS_Standard", "WISC_FSIQ", "WISC_GAI")]
 WISC_subscales <- na.omit(WISC_subscales)
 row.names(WISC_subscales) <- WISC_subscales$EID
 WISC_subscales$EID <- NULL
 
-WISC_components <- prcomp(~ WISC_BD_Scaled + 
-                            WISC_Similarities_Scaled + 
-                            WISC_MR_Scaled + 
-                            WISC_DS_Scaled +
-                            WISC_Coding_Scaled +
-                            WISC_Vocab_Scaled +
-                            WISC_FW_Scaled +
-                            WISC_VP_Scaled +
-                            WISC_PS_Scaled +
-                            WISC_SS_Scaled, data = WISC_subscales, scale. = TRUE)
+WISC_components <- prcomp(~ WISC_BD_Standard + 
+                            WISC_Similarities_Standard + 
+                            WISC_MR_Standard + 
+                            WISC_DS_Standard +
+                            WISC_Coding_Standard +
+                            WISC_Vocab_Standard +
+                            WISC_FW_Standard +
+                            WISC_VP_Standard +
+                            WISC_PS_Standard +
+                            WISC_SS_Standard, data = WISC_subscales, scale. = TRUE)
 summary(WISC_components)
 biplot(WISC_components)
 fviz_pca_var(WISC_components,
@@ -1520,6 +1282,7 @@ WISC_PC_all <- merge(WISC_PC, WISC_PC_rot, by = "EID")
 
 WISC_subscales$EID <- row.names(WISC_subscales)
 WISC_PC_all <- merge(WISC_subscales, WISC_PC_all, by = "EID")
+WISC_PC_all$PC1 <- -WISC_PC_all$PC1
 
 WISC_PC_corr <- cor(WISC_PC_all[, c("WISC_FSIQ", "WISC_GAI", "PC1", "RC1")], 
                     method = "pearson")
@@ -1628,62 +1391,6 @@ ggplot(plot_data, aes(x = PC1_demo_dx_ctrl, y = peg_z_d_demo_dx_ctrl)) +
   annotate("text", -3.5, 5, label = paste0("r = ", signif(cor(plot_data$PC1_demo_dx_ctrl, plot_data$peg_z_d_demo_dx_ctrl, method = "pearson"), 3)))
 ggsave("Plots/Correlations/PC1_GP_Demo_Dx_Ctrl.png")
 
-### Run regression with signficant SWAN items
-Dx_Cat_Regression <- Reduce(Merge, list(PSTasks, Basic_Demos, Barratt[, c("EID", "Barratt_Total")],
-                                        WISC[, c("EID", "WISC_GAI", "WISC_FSIQ")], 
-                                        SWAN[, c("EID", "SWAN_01", "SWAN_02", "SWAN_03", "SWAN_04", "SWAN_05",
-                                                 "SWAN_06", "SWAN_07", "SWAN_08", "SWAN_09", "SWAN_10",
-                                                 "SWAN_11", "SWAN_12", "SWAN_13", "SWAN_14", "SWAN_15",
-                                                 "SWAN_16", "SWAN_17", "SWAN_18")]))
-Dx_Cat_Regression <- na.omit(Dx_Cat_Regression)
-Dx_Cat_Regression$Study_Site <- factor(Dx_Cat_Regression$Study_Site)
-
-coeffs_all <- data.frame(variable = character(),	SWAN_item = character(),
-                         Estimate = numeric(), CI = character(),	
-                         Std_Error = numeric(),	t_value = numeric(),
-                         p_value = numeric(),	sig = numeric(), 
-                         stringsAsFactors = FALSE)
-stats_all <- data.frame(SWAN_item = character(),
-                        f_statistic = numeric(), df_reg = numeric(),
-                        df_error = numeric(), r_sq = numeric(),
-                        r_sq_adj = numeric(),
-                        stringsAsFactors = FALSE)
-
-for (SWAN_item in c("SWAN_02", "SWAN_06", "SWAN_09", "SWAN_16", "SWAN_18")) {
-  model_eq <- paste0("lm(PC1 ~ Sex + Age + Barratt_Total + Study_Site + ", SWAN_item, ", data = Dx_Cat_Regression)")
-  model <- eval(parse(text = model_eq))
-  coeffs <- data.frame(signif(summary(model)$coefficients, 4))
-  names(coeffs) <- c("Estimate", "Std_Error", "t_value", "p_value")
-  coeffs$sig <- sig_code_v(coeffs$p_value)
-  coeffs$variable <- row.names(coeffs)
-  coeffs$variable[coeffs$variable == SWAN_item] <- "SWAN_item"
-  coeffs$SWAN_item <- SWAN_item
-  
-  coeffs$CI <- paste0("(", coeffs$Estimate - 2*coeffs$Std_Error, ", ", coeffs$Estimate + 2*coeffs$Std_Error, ")")
-  row.names(coeffs) <- NULL
-  coeffs <- coeffs[, names(coeffs_all)]
-  coeffs_all <- rbind(coeffs_all, coeffs)
-  
-  stats <- data.frame(SWAN_item = SWAN_item,
-                      f_statistic = summary(model)$fstatistic['value'], 
-                      df_obs = summary(model)$df[2],
-                      df_pred = summary(model)$df[1] - 1, r_sq = summary(model)$r.squared,
-                      r_sq_adj = summary(model)$adj.r.squared,
-                      stringsAsFactors = FALSE)
-  stats_all <- rbind(stats_all, stats)
-}
-coeffs_all <- reshape(coeffs_all, idvar = "variable", timevar = "SWAN_item",
-                      direction = "wide")
-row.names(stats_all) <- NULL
-write.csv(coeffs_all, 
-          paste0("Results/Regression/Categorical_SWANIN_item/", iq_measure, 
-                 ifelse(iq_measure == "", "", "_"), "coeffs_single_item.csv"), 
-          row.names = FALSE)
-write.csv(stats_all, 
-          paste0("Results/Regression/Categorical_SWANIN_item/", iq_measure, 
-                 ifelse(iq_measure == "", "", "_"), "stats_single_item.csv"), 
-          row.names = FALSE)
-
 ### Correlations between PC1 and Card Sort and Flanker
 plot_data <- merge(PSTasks_demos, NIH_Scores[, c("EID", "NIH7_Card", "NIH7_Flanker")], by = "EID", all.x = TRUE)
 plot_data <- plot_data[, c("EID", "PC1", "NIH7_Card", "NIH7_Flanker")]
@@ -1699,81 +1406,62 @@ ggplot(plot_data, aes(x = PC1, y = NIH7_Flanker)) +
 ggsave("Plots/Correlations/PC1_NIHFlanker.png")
 
 
-### Categorical Regression with NIH Tasks
-Dx_Cat_Regression <- Consensus_Dx[, c("EID", "ADHD_I", "ADHD_C", "ASD", "GAD", "Learning_Reading", "Learning_Math", "Anx_Soc", "Anx_All", 
-                                      "Depression", "ASD_ADHD_I", "ASD_ADHD_C", "ASD_ADHD_All", "ASD_noADHD")]
-Dx_Cat_Regression <- Reduce(Merge, list(Dx_Cat_Regression, PSTasks, 
-                                        Basic_Demos, Barratt[, c("EID", "Barratt_Total")],
-                                        WISC[, c("EID", "WISC_GAI", "WISC_FSIQ")], Pegboard,
-                                        NIH_Scores[, c("EID", "NIH7_Card", "NIH7_Flanker")]))
-Dx_Cat_Regression <- na.omit(Dx_Cat_Regression)
-Dx_Cat_Regression$Study_Site <- factor(Dx_Cat_Regression$Study_Site)
+### Correlation between PC1 and Study Site
+cor.test(PSTasks_demos$PC1, PSTasks_demos$Study_Site, method = "pearson")
 
-# Diagnoses
-model <- lm(PC1 ~ WISC_GAI, data = Dx_Cat_Regression)
-Dx_Cat_Regression$PC1_Ctrl_GAI <- resid(model)
+### Categorical Regression with individual dimensional symptoms
+Dx_Dim_Regression <- df_corr[, c("EID", "SWAN_IN", "SWAN_HY", "ASSQ_Total", "SRS_Total", "SCQ_Total")]
+Dx_Dim_Regression <- Reduce(Merge, list(Dx_Dim_Regression, PSTasks, Basic_Demos, Barratt[, c("EID", "Barratt_Total")], WISC[, c("EID", "WISC_GAI", "WISC_FSIQ")], Pegboard))
+Dx_Dim_Regression <- na.omit(Dx_Dim_Regression)
+Dx_Dim_Regression$Study_Site <- factor(Dx_Dim_Regression$Study_Site)
 
-model <- lm(PC1 ~ WISC_FSIQ, data = Dx_Cat_Regression)
-Dx_Cat_Regression$PC1_Ctrl_FSIQ <- resid(model)
+diagnoses <- c("SWAN_HY", "SWAN_IN", "ASSQ_Total", "SRS_Total", "SCQ_Total")
 
-ps_measures <- c("PC1", "PC2", "RC1", "RC2", "EEG_Standard", "WISC_SS_Standard",
-                 "WISC_Coding_Standard", "NIH7_Pattern")
-iq_measures <- c("WISC_FSIQ", "WISC_GAI", "")
-
-
-for (iq_measure in iq_measures) {
-  coeffs_all <- data.frame(variable = character(),	ps_measure = character(),
-                           iq_measure = character(),	Estimate = numeric(),	
-                           CI = character(),
+for (ps_measure in ps_measures) {
+  coeffs_all <- data.frame(variable = character(), dx = character(),
+                           Estimate = numeric(),	
                            Std_Error = numeric(),	t_value = numeric(),
                            p_value = numeric(),	sig = numeric(), 
                            stringsAsFactors = FALSE)
-  stats_all <- data.frame(ps_measure = character(), iq_measure = character(),
+  stats_all <- data.frame(dx = character(),
                           f_statistic = numeric(), df_reg = numeric(),
                           df_error = numeric(), r_sq = numeric(),
                           r_sq_adj = numeric(),
                           stringsAsFactors = FALSE)
-  for (ps_measure in ps_measures) {
-    model_eq <- ""
-    if (iq_measure == "") {
-      model_eq <- paste0("lm(", ps_measure, " ~ ADHD_I + ADHD_C + ASD + Learning_Math + Learning_Reading + Anx_All + Depression + Sex + Age + Barratt_Total + Study_Site + peg_z_d + NIH7_Card + NIH7_Flanker, data = Dx_Cat_Regression)")
-    } else {
-      model_eq <- paste0("lm(", ps_measure, " ~ ADHD_I + ADHD_C + ASD + Learning_Math + Learning_Reading + Anx_All + Depression + Sex + Age + Barratt_Total + Study_Site + peg_z_d + NIH7_Card + NIH7_Flanker, ", iq_measure, ", data = Dx_Cat_Regression)") 
-    }
+  for (dx in diagnoses) {
+    
+    pct_dx <- sum(Dx_Dim_Regression[, dx])/nrow(PSTasks_demos)
+    pct_wo_dx <- 1 - pct_dx
+    model_eq <- paste0("lm(PC1 ~ ", dx, " + Sex + Age + Study_Site + Barratt_Total + peg_z_d, data = Dx_Dim_Regression)")
+    
     model <- eval(parse(text = model_eq))
     coeffs <- data.frame(signif(summary(model)$coefficients, 4))
     names(coeffs) <- c("Estimate", "Std_Error", "t_value", "p_value")
     coeffs$sig <- sig_code_v(coeffs$p_value)
     coeffs$variable <- row.names(coeffs)
     row.names(coeffs) <- NULL
-    coeffs$ps_measure <- ps_measure
-    coeffs$iq_measure <- iq_measure
-    coeffs$CI <- paste0("(", coeffs$Estimate - 2*coeffs$Std_Error, ", ", coeffs$Estimate + 2*coeffs$Std_Error, ")")
+    coeffs$dx <- dx
+    coeffs$variable[coeffs$variable == dx] <- "dx"
     coeffs <- coeffs[, names(coeffs_all)]
     coeffs_all <- rbind(coeffs_all, coeffs)
     
-    stats <- data.frame(ps_measure = ps_measure, iq_measure = iq_measure,
+    stats <- data.frame(dx = dx,
                         f_statistic = summary(model)$fstatistic['value'], 
                         df_obs = summary(model)$df[2],
                         df_pred = summary(model)$df[1] - 1, r_sq = summary(model)$r.squared,
                         r_sq_adj = summary(model)$adj.r.squared,
                         stringsAsFactors = FALSE)
     stats_all <- rbind(stats_all, stats)
-    
   }
-  coeffs_all$iq_measure <- NULL
-  stats_all$iq_measure <- NULL
-  coeffs_all <- reshape(coeffs_all, idvar = "variable", timevar = "ps_measure",
+  coeffs_all <- reshape(coeffs_all, idvar = "variable", timevar = "dx",
                         direction = "wide")
+  
+  dir.create(file.path("Results/Regression/Dimensional_Single_Dx/", ps_measure), showWarnings = FALSE)
+  
   write.csv(coeffs_all, 
-            paste0("Results/Regression/Categorical_NIH/", iq_measure, 
-                   ifelse(iq_measure == "", "", "_"), "coeffs.csv"), 
+            file.path("Results/Regression/Dimensional_Single_Dx/", ps_measure, "coeffs.csv"), 
             row.names = FALSE)
   write.csv(stats_all, 
-            paste0("Results/Regression/Categorical_NIH/", iq_measure, 
-                   ifelse(iq_measure == "", "", "_"), "stats.csv"), 
+            file.path("Results/Regression/Dimensional_Single_Dx/", ps_measure, "stats.csv"), 
             row.names = FALSE)
 }
-
-### Correlation between PC1 and Study Site
-cor.test(PSTasks_demos$PC1, PSTasks_demos$Study_Site, method = "pearson")

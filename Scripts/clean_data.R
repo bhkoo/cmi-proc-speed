@@ -511,56 +511,41 @@ EEG_behav_data$EEG_Standard = case_when(
               EEG_behav_data$EEG_Raw_Score %in% c(52:53) ~ 140,
               EEG_behav_data$EEG_Raw_Score %in% c(54:60) ~ 145
   )  
-) 
+)
 
 EEG_behav_data <- EEG_behav_data[!is.na(EEG_behav_data$EEG_Standard),]
 EEG_behav_data <- EEG_behav_data[, c("EID", "EEG_Raw_Score", "EEG_Standard")]
 write.csv(EEG_behav_data, "../../Data Cleaned/EEG_behav_data.csv", row.names = FALSE)
 
 ## WISC - get standard scores for SS and coding
-WISC$WISC_SS_Standard = case_when(
-  WISC$WISC_SS_Scaled == 1 ~ 55,
-  WISC$WISC_SS_Scaled == 2 ~ 60,
-  WISC$WISC_SS_Scaled == 3 ~ 65,
-  WISC$WISC_SS_Scaled == 4 ~ 70,
-  WISC$WISC_SS_Scaled == 5 ~ 75,
-  WISC$WISC_SS_Scaled == 6 ~ 80,
-  WISC$WISC_SS_Scaled == 7 ~ 85,
-  WISC$WISC_SS_Scaled == 8 ~ 90,
-  WISC$WISC_SS_Scaled == 9 ~ 95,
-  WISC$WISC_SS_Scaled == 10 ~ 100,
-  WISC$WISC_SS_Scaled == 11 ~ 105,
-  WISC$WISC_SS_Scaled == 12 ~ 110,
-  WISC$WISC_SS_Scaled == 13 ~ 115,
-  WISC$WISC_SS_Scaled == 14 ~ 120,
-  WISC$WISC_SS_Scaled == 15 ~ 125,
-  WISC$WISC_SS_Scaled == 16 ~ 130,
-  WISC$WISC_SS_Scaled == 17 ~ 135,
-  WISC$WISC_SS_Scaled == 18 ~ 140,
-  WISC$WISC_SS_Scaled == 19 ~ 145
-)
 
-WISC$WISC_Coding_Standard = case_when(
-  WISC$WISC_Coding_Scaled == 1 ~ 55,
-  WISC$WISC_Coding_Scaled == 2 ~ 60,
-  WISC$WISC_Coding_Scaled == 3 ~ 65,
-  WISC$WISC_Coding_Scaled == 4 ~ 70,
-  WISC$WISC_Coding_Scaled == 5 ~ 75,
-  WISC$WISC_Coding_Scaled == 6 ~ 80,
-  WISC$WISC_Coding_Scaled == 7 ~ 85,
-  WISC$WISC_Coding_Scaled == 8 ~ 90,
-  WISC$WISC_Coding_Scaled == 9 ~ 95,
-  WISC$WISC_Coding_Scaled == 10 ~ 100,
-  WISC$WISC_Coding_Scaled == 11 ~ 105,
-  WISC$WISC_Coding_Scaled == 12 ~ 110,
-  WISC$WISC_Coding_Scaled == 13 ~ 115,
-  WISC$WISC_Coding_Scaled == 14 ~ 120,
-  WISC$WISC_Coding_Scaled == 15 ~ 125,
-  WISC$WISC_Coding_Scaled == 16 ~ 130,
-  WISC$WISC_Coding_Scaled == 17 ~ 135,
-  WISC$WISC_Coding_Scaled == 18 ~ 140,
-  WISC$WISC_Coding_Scaled == 19 ~ 145
-)
+for (subscale in c("WISC_BD", "WISC_Similarities",
+                   "WISC_MR", "WISC_DS", "WISC_Coding",
+                   "WISC_Vocab", "WISC_FW", "WISC_VP",
+                   "WISC_PS", "WISC_SS")) {
+  WISC[, paste0(subscale, "_Standard")] = case_when(
+    WISC[, paste0(subscale, "_Scaled")] == 1 ~ 55,
+    WISC[, paste0(subscale, "_Scaled")] == 2 ~ 60,
+    WISC[, paste0(subscale, "_Scaled")] == 3 ~ 65,
+    WISC[, paste0(subscale, "_Scaled")] == 4 ~ 70,
+    WISC[, paste0(subscale, "_Scaled")] == 5 ~ 75,
+    WISC[, paste0(subscale, "_Scaled")] == 6 ~ 80,
+    WISC[, paste0(subscale, "_Scaled")] == 7 ~ 85,
+    WISC[, paste0(subscale, "_Scaled")] == 8 ~ 90,
+    WISC[, paste0(subscale, "_Scaled")] == 9 ~ 95,
+    WISC[, paste0(subscale, "_Scaled")] == 10 ~ 100,
+    WISC[, paste0(subscale, "_Scaled")] == 11 ~ 105,
+    WISC[, paste0(subscale, "_Scaled")] == 12 ~ 110,
+    WISC[, paste0(subscale, "_Scaled")] == 13 ~ 115,
+    WISC[, paste0(subscale, "_Scaled")] == 14 ~ 120,
+    WISC[, paste0(subscale, "_Scaled")] == 15 ~ 125,
+    WISC[, paste0(subscale, "_Scaled")] == 16 ~ 130,
+    WISC[, paste0(subscale, "_Scaled")] == 17 ~ 135,
+    WISC[, paste0(subscale, "_Scaled")] == 18 ~ 140,
+    WISC[, paste0(subscale, "_Scaled")] == 19 ~ 145
+  )  
+}
+
 
 setwd("R:/Data Feb 2019")
 WISC_GAI_Conversion <- read.csv("Scripts/WISC_GAI_Conversion.csv", stringsAsFactors = FALSE)
