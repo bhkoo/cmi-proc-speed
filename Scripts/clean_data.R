@@ -15,15 +15,16 @@ setwd("R:/Data Feb 2019/Data")
 #setwd("/Volumes/data/Research/Healthy Brain Network/AACAP/2017/Proc Speed/Data Feb 2019/Data")
 
 temp = list.files(pattern="*.csv")
+# Read in every csv in the folder
 list2env(
   lapply(setNames(temp, make.names(gsub("*.csv$", "", temp))), 
          read.csv, stringsAsFactors = FALSE), envir = .GlobalEnv)
 
+# Merge two dataframes x and y via outer join
 Merge <- function(x, y){
   df <- merge(x, y, by= "EID", all.x= TRUE, all.y= TRUE)
   return(df)
 }
-
 
 # Calculate EEG WISC Scores
 # Set directory to folder with WISC SS files
@@ -546,7 +547,7 @@ for (subscale in c("WISC_BD", "WISC_Similarities",
   )  
 }
 
-
+# Convert WISC GAI scores to scale scores
 setwd("R:/Data Feb 2019")
 WISC_GAI_Conversion <- read.csv("Scripts/WISC_GAI_Conversion.csv", stringsAsFactors = FALSE)
 names(WISC_GAI_Conversion)[1] <- "GAI_Sum_Scaled_Scores"
